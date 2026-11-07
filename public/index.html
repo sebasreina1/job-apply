@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Apply</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <header class="top"><div class="wrap brand"><span class="mark" aria-hidden="true">JA</span><strong>Job Apply</strong><span class="local">En este equipo</span></div></header>
+  <main class="wrap">
+    <section class="intro"><span class="eyebrow">CANDIDATURAS</span><h1>De la vacante a tu candidatura.</h1><p>Elige el idioma y usa tu experiencia para adaptar el CV a cada puesto.</p></section>
+    <form id="new-job" class="card">
+      <div class="fields"><label>Enlace a la vacante<input id="url" name="url" type="url" placeholder="https://jobs.lever.co/empresa/…" required></label>
+      <label>Idioma del CV<select name="language"><option value="en">English</option><option value="fr">Français</option><option value="es">Español</option></select></label></div>
+      <details><summary>Pegar la descripción si el portal bloquea la lectura</summary><label>Descripción de la vacante<textarea name="description" rows="5" maxlength="30000"></textarea></label></details>
+      <div class="actions"><button type="submit" name="mode" value="prepare">Preparar CV</button><button type="submit" name="mode" value="auto" class="primary">Preparar y aplicar</button></div>
+      <p class="help">El envío automático funciona con formularios compatibles de Lever y Greenhouse. Si hay preguntas pendientes, podrás responderlas en la pestaña de la vacante.</p>
+      <p id="error" role="alert" hidden></p>
+    </form>
+    <section class="history"><div class="section-title"><h2>Candidaturas</h2><span id="count"></span></div><div id="jobs" aria-live="polite"></div></section>
+  </main>
+</body>
+</html>
