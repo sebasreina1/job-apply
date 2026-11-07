@@ -43,6 +43,11 @@ export async function openBrowser(directory) {
   return chromium.launchPersistentContext(directory, { channel: 'chrome', headless: false, chromiumSandbox: true, acceptDownloads: false, timeout: 20000 });
 }
 
+export function manualPortal(url) {
+  const host = jobURL(url).hostname;
+  return host === 'linkedin.com' || host.endsWith('.linkedin.com');
+}
+
 export async function readJob(page, inputURL, pastedDescription) {
   try {
     await page.goto(inputURL, { waitUntil: 'domcontentloaded', timeout: 22000 });
@@ -66,9 +71,13 @@ export async function readJob(page, inputURL, pastedDescription) {
     }
     const description = new DOMParser().parseFromString(typeof posting?.description === 'string' ? posting.description : '', 'text/html').body.textContent;
     const main = document.querySelector('main, [role="main"], #content, .posting-page') || document.body;
+    const locations = [posting?.jobLocation].flat().map(place => place?.address).filter(Boolean).flatMap(address =>
+      typeof address === 'string' ? [address] : [address.addressLocality, address.addressRegion, address.addressCountry?.name || address.addressCountry]);
+    const location = locations.filter(value => typeof value === 'string').join(', ') || document.querySelector('.posting-categories .location, .location, [itemprop="jobLocation"]')?.innerText || '';
     return {
       title: String(posting?.title || document.querySelector('h1, .posting-headline h2, .app-title')?.innerText || document.title).trim(),
       company: String(posting?.hiringOrganization?.name || ''),
+      location: location.trim().slice(0, 300),
       description: description.trim() || main.innerText.trim(),
       applyLinks: [...document.querySelectorAll('a[href], iframe[src]')].filter(node => node.tagName === 'IFRAME' || /apply|postuler|candidature|aplicar/i.test(node.textContent + ' ' + node.getAttribute('aria-label'))).map(node => node.href || node.src),
     };
@@ -82,7 +91,7 @@ export async function readJob(page, inputURL, pastedDescription) {
   if (description.length < 80 || (!pastedDescription && /^(sign in|just a moment|access denied|page not found|verify you are human)/i.test(info.title))) {
     throw new Error('No pude leer una descripción completa. Pega el texto de la oferta en la opción manual.');
   }
-  return { title: info.title.slice(0, 200), company: info.company.slice(0, 120), description, target };
+  return { title: info.title.slice(0, 200), company: info.company.slice(0, 120), location: info.location, description, target };
 }
 
 const fieldNames = {
@@ -105,7 +114,7 @@ export function fieldKey(field) {
   return Object.hasOwn(safeNames, field.name) ? safeNames[field.name] : autoComplete[field.autocomplete];
 }
 
-export async function inspectForm(page, target, profile, pdf, fill = true) {
+export async function inspectForm(page, target, profile, pdf, fill = true, replaceCv = false) {
   if (provider(page.url())?.key !== target.key) return { missing: ['La página cambió o pide iniciar sesión. Abre el formulario de la vacante en el navegador.'] };
   const forms = page.locator('form').filter({ has: page.locator('input[type="file"]') });
   if (await forms.count() !== 1) return { missing: ['No se encontró un único formulario con carga de CV. Revisa la pestaña de la vacante.'] };
@@ -139,7 +148,7 @@ export async function inspectForm(page, target, profile, pdf, fill = true) {
     if (field.type === 'file') {
       const isCv = /résumé|resume|curriculum|\bcv\b/i.test(label) || field.name === 'resume';
       if (isCv && !cv) {
-        if (fill && !field.value) {
+        if (fill && (!field.value || replaceCv)) {
           try { await input.setInputFiles(pdf, { timeout: 6000 }); filled.push(label); }
           catch { missing.push('Carga del CV'); continue; }
         }
@@ -176,7 +185,7 @@ export async function inspectForm(page, target, profile, pdf, fill = true) {
   if (!(await form.evaluate(el => el.checkValidity()))) missing.push('El portal marca campos inválidos o incompletos');
   const button = form.getByRole('button', { name: /^(submit( application)?|send application|apply now|apply for this job|envoyer( ma candidature)?|postuler|soumettre( la candidature)?|enviar( solicitud| candidatura)?)$/i });
   if (await button.count() !== 1 || !(await button.isEnabled()) || !(await button.isVisible())) missing.push('Botón de envío inequívoco');
-  return { missing: [...new Set(missing)], filled, button };
+  return { missing: [...new Set(missing)], filled, button, form };
 }
 
 export async function waitForReceipt(page) {

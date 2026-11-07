@@ -11,15 +11,22 @@
   <header class="top"><div class="wrap brand"><span class="mark" aria-hidden="true">JA</span><strong>Job Apply</strong><span class="local">En este equipo</span></div></header>
   <main class="wrap">
     <section class="intro"><span class="eyebrow">CANDIDATURAS</span><h1>De la vacante a tu candidatura.</h1><p>Elige el idioma y usa tu experiencia para adaptar el CV a cada puesto.</p></section>
+    <section class="card sources-panel" aria-labelledby="sources-title">
+      <div class="section-title"><h2 id="sources-title">Fuentes vigiladas</h2><span id="monitor-status"></span></div>
+      <form id="source-form" class="fields"><label>Bolsa de empleo de la empresa<input name="url" type="url" placeholder="https://jobs.lever.co/empresa" required></label><button type="submit">Añadir fuente</button></form>
+      <div id="sources"></div>
+      <div class="actions"><button id="scan" type="button">Consultar ahora</button><button id="auto-toggle" type="button" aria-pressed="false">Activar envío automático</button></div>
+      <p class="help" id="monitor-help"></p>
+    </section>
     <form id="new-job" class="card">
-      <div class="fields"><label>Enlace a la vacante<input id="url" name="url" type="url" placeholder="https://jobs.lever.co/empresa/…" required></label>
+      <div class="fields"><label>Enlaces a vacantes, uno por línea<textarea id="url" name="urls" rows="3" placeholder="https://jobs.lever.co/empresa/…"></textarea></label>
       <label>Idioma del CV<select name="language"><option value="en">English</option><option value="fr">Français</option><option value="es">Español</option></select></label></div>
       <details><summary>Pegar la descripción si el portal bloquea la lectura</summary><label>Descripción de la vacante<textarea name="description" rows="5" maxlength="30000"></textarea></label></details>
-      <div class="actions"><button type="submit" name="mode" value="prepare">Preparar CV</button><button type="submit" name="mode" value="auto" class="primary">Preparar y aplicar</button></div>
-      <p class="help">El envío automático funciona con formularios compatibles de Lever y Greenhouse. Si hay preguntas pendientes, podrás responderlas en la pestaña de la vacante.</p>
+      <p class="help" id="selection">También puedes seleccionar vacantes del panel.</p><div class="actions"><button type="submit" name="mode" value="prepare">Preparar CV</button><button type="submit" name="mode" value="auto" class="primary">Preparar y aplicar</button></div>
+      <p class="help">Puedes preparar varios CV o iniciar el envío de un lote. Si el portal requiere tu intervención, podrás continuar en Chrome.</p>
       <p id="error" role="alert" hidden></p>
     </form>
-    <section class="history"><div class="section-title"><h2>Candidaturas</h2><span id="count"></span></div><div id="jobs" aria-live="polite"></div></section>
+    <section class="history"><div class="section-title"><h2>Candidaturas</h2><span id="count"></span></div><label class="filter">Filtrar estado<select id="filter"><option value="">Todos</option><option value="detected">Detectadas</option><option value="review">Requieren revisión</option><option value="ready">CV listo</option><option value="queued">En cola</option><option value="submitted">Enviadas</option><option value="unconfirmed">Envío sin confirmar</option></select></label><div id="jobs" aria-live="polite"></div></section>
   </main>
 </body>
 </html>
