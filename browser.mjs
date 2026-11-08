@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { isIP } from 'node:net';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 const require = createRequire(import.meta.url);
 const lever = new Set(['jobs.lever.co', 'jobs.eu.lever.co']);
@@ -264,12 +265,23 @@ export async function advanceApplication(page, target, profile, pdf, { progress,
   return { missing: ['Se alcanzó el límite de pantallas de la candidatura.'], progress: current };
 }
 
-export async function waitForReceipt(page) {
-  // Explicit acceptance wording, never an HTTP success status alone.
-  const receipt = /thank you for (?:applying|your application)|your application (?:has been|was|is) (?:submitted|received)|application submitted successfully|merci pour votre candidature|votre candidature a bien été (?:reçue|envoyée)|hemos recibido tu (?:candidatura|solicitud)/i;
-  const locator = page.getByText(receipt).filter({ visible: true }).first();
-  try {
-    await locator.waitFor({ state: 'visible', timeout: 10000 });
-    return (await locator.innerText()).trim().slice(0, 300);
-  } catch { return null; }
+const receiptPattern = /thank you for (?:applying|your application)|your application (?:has been|was|is) (?:submitted|received)|application submitted successfully|merci pour votre candidature|votre candidature a bien été (?:reçue|envoyée)|hemos recibido tu (?:candidatura|solicitud)/i;
+
+export async function visibleReceipts(page) {
+  const texts = await page.getByText(receiptPattern).filter({ visible: true }).allTextContents();
+  return [...new Set(texts.map(value => value.replace(/\s+/g, ' ').trim()).filter(Boolean))];
+}
+
+export async function waitForReceipt(page, { previous = [], timeout = 10000 } = {}) {
+  const old = new Set(previous);
+  const deadline = Date.now() + timeout;
+  do {
+    if (page.isClosed()) return null;
+    try {
+      const newText = (await visibleReceipts(page)).find(text => !old.has(text));
+      if (newText) return newText.slice(0, 300);
+    } catch { /* A navigation can detach the previous page while the receipt loads. */ }
+    if (Date.now() < deadline) await sleep(Math.min(150, deadline - Date.now()));
+  } while (Date.now() < deadline);
+  return null;
 }

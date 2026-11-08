@@ -5,7 +5,7 @@ import { createReadStream } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createResume, languages, tailor } from './resume.mjs';
-import { advanceApplication, formSnapshot, jobURL, manualPortal, onApplication, openBrowser, provider, readJob, waitForReceipt } from './browser.mjs';
+import { advanceApplication, formSnapshot, jobURL, manualPortal, onApplication, openBrowser, provider, readJob, visibleReceipts, waitForReceipt } from './browser.mjs';
 import { aiConfigured, analyzePosting, automaticAttempts, evaluateMatch, localExtraction, orderMatches } from './matching.mjs';
 import { fetchBoard } from './boards.mjs';
 import { createMonitor, macNotice, writeRecord } from './monitor.mjs';
@@ -266,6 +266,7 @@ async function apply(job, submit, automatic = false) {
   }
   const fields = await formSnapshot(form.form);
   await writeRecord(join(runsDir, job.id, 'form.json'), { url: page.url(), fields, steps: form.progress.steps });
+  const previousReceipts = await visibleReceipts(page);
   // The last check is after form snapshot I/O, just before reserving the attempt.
   if (!allowed()) {
     await save(job, { state: 'ready' });
@@ -277,7 +278,7 @@ async function apply(job, submit, automatic = false) {
     return;
   }
   await form.button.click({ timeout: 8000 });
-  const receipt = await waitForReceipt(page);
+  const receipt = await waitForReceipt(page, { previous: previousReceipts });
   let receiptCapture = false;
   let receiptUrl = null;
   if (receipt) {
@@ -296,6 +297,7 @@ async function apply(job, submit, automatic = false) {
 
 const port = Number(process.env.PORT || 4328);
 const origin = `http://127.0.0.1:${port}`;
+const localHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`]);
 const send = (res, code, value) => res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify(value));
 const publicFiles = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
 
@@ -303,7 +305,7 @@ async function request(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Content-Security-Policy', "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'");
-  if (req.headers.host !== new URL(origin).host) return send(res, 403, { error: 'Origen no permitido.' });
+  if (!localHosts.has(req.headers.host)) return send(res, 403, { error: 'Origen no permitido.' });
   const pathname = new URL(req.url, origin).pathname;
   if (req.method === 'GET' && Object.hasOwn(publicFiles, pathname)) {
     const [file, mime] = publicFiles[pathname];
@@ -333,7 +335,7 @@ async function request(req, res) {
     file.on('error', () => res.destroy());
     return file.pipe(res);
   }
-  if (req.method !== 'POST' || req.headers.origin !== origin || req.headers['x-local-token'] !== token) return send(res, 403, { error: 'Solicitud no permitida.' });
+  if (req.method !== 'POST' || req.headers.origin !== `http://${req.headers.host}` || req.headers['x-local-token'] !== token) return send(res, 403, { error: 'Solicitud no permitida.' });
   let body = '';
   for await (const chunk of req) {
     body += chunk;

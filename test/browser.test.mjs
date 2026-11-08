@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { advanceApplication, browserLibrary, inspectForm, provider, readJob, waitForReceipt } from '../browser.mjs';
+import { advanceApplication, browserLibrary, inspectForm, provider, readJob, visibleReceipts, waitForReceipt } from '../browser.mjs';
 
 const sample = { identity: { name: 'Test Candidate', email: 'candidate@example.test', phone: '5550100' } };
 const fixture = `<main><h1>Java Backend Engineer</h1><p>We build customer software using Java, Spring Boot, PostgreSQL, Kubernetes, REST APIs and CI/CD tooling.</p><form>
@@ -36,6 +36,11 @@ test('browser reads the posting, uploads the CV, pauses for authorization and re
     assert.deepEqual(complete.missing, []);
     await complete.button.click();
     assert.match(await waitForReceipt(page), /Thank you for applying/);
+    const previous = await visibleReceipts(page);
+    await page.locator('body').evaluate(body => body.insertAdjacentHTML('beforeend', '<p>Server error</p>'));
+    assert.equal(await waitForReceipt(page, { previous, timeout: 100 }), null);
+    await page.locator('body').evaluate(body => body.insertAdjacentHTML('beforeend', '<p>Your application has been received.</p>'));
+    assert.match(await waitForReceipt(page, { previous }), /application has been received/);
   } finally {
     await browser.close();
     await rm(directory, { recursive: true, force: true });

@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
+import { get as httpGet } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -97,6 +98,14 @@ test('a new watched posting compiles, advances in Chrome, sends once and survive
       await exit;
     }
     let state = await start();
+    const statusForHost = host => new Promise((resolve, reject) => {
+      httpGet(`${origin}/`, { headers: { host } }, response => {
+        response.resume();
+        resolve(response.statusCode);
+      }).on('error', reject);
+    });
+    assert.equal(await statusForHost(`localhost:${port}`), 200);
+    assert.equal(await statusForHost('example.test'), 403);
     const post = (path, body) => fetch(origin + path, { method: 'POST', headers: { origin, 'content-type': 'application/json', 'x-local-token': state.token }, body: JSON.stringify(body) });
     assert.equal((await post('/api/sources', { url: posting })).status, 201);
     assert.equal((await post('/api/monitor', { auto: true })).status, 400);
