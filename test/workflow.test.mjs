@@ -31,12 +31,13 @@ function bootstrap() {
     import { browserLibrary } from ${JSON.stringify(new URL('../browser.mjs', import.meta.url).href)};
     const home = process.env.JOB_APPLY_DATA;
     const posting = ${JSON.stringify(posting)};
-    globalThis.fetch = async url => {
+    globalThis.fetch = async (url, options) => {
       if (String(url).startsWith('https://boards-api.greenhouse.io/')) {
         const active = (await readFile(join(home, 'listing'), 'utf8')) === 'open';
         return Response.json({ jobs: active ? [{ id: 1234, title: 'Java Software Developer', absolute_url: posting, location: { name: 'Paris, France' }, content: ${JSON.stringify(description)} }] : [] });
       }
       if (String(url) === 'https://api.openai.com/v1/responses') {
+        if (options.headers.Authorization !== 'Bearer sk-fixture-accepted1234') return Response.json({}, { status: 401 });
         return Response.json({ status: 'completed', output: [{ content: [{ type: 'output_text', text: JSON.stringify({ criteria: [{ category: 'required', tag: 'java', quote: 'Java is required.' }], sponsorshipQuote: 'We offer visa sponsorship.', englishQuote: '', localOptionalQuote: '', wording: [] }) }] }] });
       }
       throw Error('External traffic is disabled in this test.');
@@ -82,7 +83,7 @@ test('a new watched posting compiles, advances in Chrome, sends once and survive
     const get = async () => (await fetch(`${origin}/api/jobs`)).json();
     async function start() {
       child = spawn(process.execPath, ['--import', join(home, 'mock.mjs'), 'server.mjs'], {
-        cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: String(port), JOB_APPLY_DATA: home, OPENAI_API_KEY: 'fixture', JOB_APPLY_MODEL: 'fixture' },
+        cwd: new URL('..', import.meta.url), env: { ...process.env, PORT: String(port), JOB_APPLY_DATA: home, OPENAI_API_KEY: '', JOB_APPLY_MODEL: '' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       child.stdout.on('data', chunk => { output += chunk; });
@@ -98,6 +99,13 @@ test('a new watched posting compiles, advances in Chrome, sends once and survive
     let state = await start();
     const post = (path, body) => fetch(origin + path, { method: 'POST', headers: { origin, 'content-type': 'application/json', 'x-local-token': state.token }, body: JSON.stringify(body) });
     assert.equal((await post('/api/sources', { url: posting })).status, 201);
+    assert.equal((await post('/api/monitor', { auto: true })).status, 400);
+    assert.equal((await post('/api/ai', { key: 'sk-fixture-rejected1234', model: 'fixture' })).status, 400);
+    assert.equal((await get()).aiConfigured, false);
+    const saved = await post('/api/ai', { key: 'sk-fixture-accepted1234', model: 'fixture' });
+    assert.equal(saved.status, 200);
+    assert.deepEqual(await saved.json(), { aiConfigured: true });
+    assert.equal((await get()).monitor.auto, false);
     assert.equal((await post('/api/monitor', { auto: true })).status, 200);
     await writeFile(join(home, 'listing'), 'open');
     assert.equal((await post('/api/scan', {})).status, 202);
@@ -122,6 +130,8 @@ test('a new watched posting compiles, advances in Chrome, sends once and survive
     await stop();
     state = await start();
     assert.equal(state.jobs[0].state, 'submitted');
+    assert.equal(state.aiConfigured, true);
+    assert.ok(!JSON.stringify(state).includes('sk-fixture-accepted1234'));
     assert.equal(state.automaticToday, 1);
     assert.equal((await post('/api/advance', { id: job.id, submit: true })).status, 400);
     assert.equal(await readFile(join(home, 'submissions'), 'utf8'), '1\n');

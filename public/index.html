@@ -17,6 +17,15 @@
       <div id="sources"></div>
       <div class="actions"><button id="scan" type="button">Consultar ahora</button><button id="auto-toggle" type="button" aria-pressed="false">Activar envío automático</button></div>
       <p class="help" id="monitor-help"></p>
+      <details id="ai-settings"><summary>Configurar OpenAI</summary>
+        <form id="ai-form" class="fields" autocomplete="off">
+          <label>Clave de API de OpenAI<input name="key" type="password" autocomplete="new-password" required></label>
+          <label>Modelo de OpenAI<input name="model" type="text" placeholder="Identificador del modelo" required></label>
+          <button type="submit">Probar y guardar</button>
+        </form>
+        <p class="help">La prueba envía un ejemplo ficticio a OpenAI. La clave se guarda en este equipo.</p>
+        <p class="help" id="ai-feedback" role="status"></p>
+      </details>
     </section>
     <form id="new-job" class="card">
       <div class="fields"><label>Enlaces a vacantes, uno por línea<textarea id="url" name="urls" rows="3" placeholder="https://jobs.lever.co/empresa/…"></textarea></label>

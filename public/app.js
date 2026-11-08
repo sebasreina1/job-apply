@@ -120,7 +120,7 @@ function renderDashboard(state) {
   autoToggle.setAttribute('aria-pressed', String(state.monitor.auto));
   autoToggle.disabled = !state.monitor.auto && (!state.aiConfigured || !state.monitor.sources.some(source => source.enabled && source.lastSuccess));
   document.querySelector('#monitor-status').textContent = `${state.automaticToday} de 10 intentos automáticos hoy`;
-  document.querySelector('#monitor-help').textContent = state.aiConfigured ? 'Consulta cada cinco minutos. La primera lectura de cada fuente queda para revisión.' : 'La puntuación local y los borradores están disponibles. Configura la IA en el archivo local para activar el envío automático.';
+  document.querySelector('#monitor-help').textContent = state.aiConfigured ? 'Consulta cada cinco minutos. La primera lectura de cada fuente queda para revisión.' : 'La puntuación local y los borradores están disponibles. Configura OpenAI en este panel y añade una fuente para activar el envío automático.';
   const sourceList = document.querySelector('#sources');
   sourceList.replaceChildren(...state.monitor.sources.map(source => {
     const row = element('div', null, 'source-row');
@@ -156,6 +156,23 @@ sourceForm.addEventListener('submit', async event => {
   event.preventDefault();
   const url = new FormData(sourceForm).get('url');
   if (await perform('/api/sources', { url }, sourceForm.querySelector('button'))) sourceForm.reset();
+});
+const aiForm = document.querySelector('#ai-form');
+aiForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = aiForm.querySelector('button');
+  const feedback = document.querySelector('#ai-feedback');
+  const values = Object.fromEntries(new FormData(aiForm));
+  aiForm.elements.key.value = '';
+  button.disabled = true;
+  feedback.textContent = 'Validando el acceso a OpenAI…';
+  try {
+    if (!token) await refresh();
+    await post('/api/ai', values);
+    await refresh();
+    feedback.textContent = 'OpenAI está configurado. Revisa tus fuentes antes de activar el envío automático.';
+  } catch (error) { feedback.textContent = error.message; }
+  finally { button.disabled = false; }
 });
 autoToggle.addEventListener('click', () => perform('/api/monitor', { auto: !current.monitor.auto }, autoToggle));
 const scan = document.querySelector('#scan');

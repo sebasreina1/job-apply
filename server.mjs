@@ -17,6 +17,37 @@ const templateDir = join(local, 'template');
 try { process.loadEnvFile(join(local, '.env')); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 await mkdir(runsDir, { recursive: true, mode: 0o700 });
+const aiSettingsPath = join(local, 'ai.json');
+function useAI({ key, model }) {
+  if (!validAI(key, model)) throw new Error('Configuración de IA inválida.');
+  process.env.OPENAI_API_KEY = key;
+  process.env.JOB_APPLY_MODEL = model;
+}
+try { useAI(JSON.parse(await readFile(aiSettingsPath, 'utf8'))); }
+catch (error) { if (error.code !== 'ENOENT') console.error('No se pudo cargar la configuración local de IA.'); }
+function validAI(key, model) {
+  return typeof key === 'string' && /^sk-[A-Za-z0-9_-]{12,500}$/.test(key) &&
+    typeof model === 'string' && /^[A-Za-z0-9_.:-]{1,160}$/.test(model);
+}
+let configuringAI = false;
+async function configureAI(input) {
+  const key = typeof input.key === 'string' ? input.key.trim() : '';
+  const model = typeof input.model === 'string' ? input.model.trim() : '';
+  if (!validAI(key, model)) throw new Error('Introduce una clave de API de OpenAI y un identificador de modelo válidos.');
+  if (configuringAI) throw new Error('Ya hay una validación de IA en curso.');
+  configuringAI = true;
+  try {
+    const credentials = { key, model };
+    try {
+      await analyzePosting({ title: 'Configuration check', description: 'Java is required.' }, { experience: [] }, 'en', fetch, credentials);
+    } catch {
+      throw new Error('OpenAI no pudo completar la prueba. Comprueba la clave, el modelo, el acceso a la API y el saldo disponible.');
+    }
+    await writeRecord(aiSettingsPath, credentials);
+    useAI(credentials);
+  } finally { configuringAI = false; }
+}
+
 const jobs = new Map();
 const sessions = new Map();
 const applicationProgress = new WeakMap();
@@ -309,9 +340,14 @@ async function request(req, res) {
     if (body.length > 42000) return send(res, 413, { error: 'El texto de la oferta es demasiado largo.' });
   }
   const input = JSON.parse(body);
+  if (pathname === '/api/ai') {
+    await configureAI(input);
+    schedule();
+    return send(res, 200, { aiConfigured: true });
+  }
   if (pathname === '/api/sources') return send(res, 201, await monitor.add(input.url));
   if (pathname === '/api/monitor') {
-    if (input.auto === true && !aiConfigured()) throw new Error('Configura OPENAI_API_KEY y JOB_APPLY_MODEL antes de activar el envío automático.');
+    if (input.auto === true && !aiConfigured()) throw new Error('Configura OpenAI en el panel antes de activar el envío automático.');
     if (input.auto === true && !monitor.snapshot().sources.some(source => source.enabled && source.lastSuccess)) throw new Error('Añade una fuente y revisa su primera lectura.');
     const state = await monitor.update(input);
     schedule();
