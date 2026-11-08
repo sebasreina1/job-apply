@@ -5,7 +5,7 @@ import { createReadStream } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createResume, languages, tailor } from './resume.mjs';
-import { inspectForm, jobURL, manualPortal, openBrowser, provider, readJob, waitForReceipt } from './browser.mjs';
+import { advanceApplication, formSnapshot, jobURL, manualPortal, onApplication, openBrowser, provider, readJob, waitForReceipt } from './browser.mjs';
 import { aiConfigured, analyzePosting, automaticAttempts, evaluateMatch, localExtraction, orderMatches } from './matching.mjs';
 import { fetchBoard } from './boards.mjs';
 import { createMonitor, macNotice, writeRecord } from './monitor.mjs';
@@ -19,6 +19,7 @@ catch (error) { if (error.code !== 'ENOENT') throw error; }
 await mkdir(runsDir, { recursive: true, mode: 0o700 });
 const jobs = new Map();
 const sessions = new Map();
+const applicationProgress = new WeakMap();
 const token = randomBytes(32).toString('hex');
 let contextPromise;
 const irreversible = new Set(['sending', 'unconfirmed', 'submitted']);
@@ -106,7 +107,9 @@ async function prepare(job, description = '', submit = false, automatic = false)
   }
   if (!job.analyzed) await assess(job, posting, candidate);
   const result = tailor(candidate, posting, job.language, job.wording);
-  await save(job, { state: 'generating', posting, title: posting.title, company: posting.company, location: posting.location, target: posting.target, focus: result.focus, terms: result.terms, evidence: result.evidence });
+  await save(job, { state: 'generating', posting, applicationScreen: null, title: posting.title, company: posting.company, location: posting.location, target: posting.target, focus: result.focus, terms: result.terms, evidence: result.evidence });
+  const previousPage = sessions.get(job.id);
+  if (previousPage) applicationProgress.delete(previousPage);
   await createResume({ templateDir, outputDir: join(runsDir, job.id), result });
   await save(job, { state: 'ready', pdf: true, message: '' });
   if (submit && posting.target?.key === provider(job.url)?.key && posting.target) await apply(job, true, automatic);
@@ -200,13 +203,24 @@ async function apply(job, submit, automatic = false) {
     page = await (await openContext()).newPage();
     sessions.set(job.id, page);
   }
-  if (page.url() !== job.target.apply && !(job.providerOpened && /^https:/.test(page.url()) && provider(page.url())?.key === job.target.key)) {
+  let progress = applicationProgress.get(page);
+  if (!onApplication(page.url(), job.target) || (!progress && page.url() !== job.target.apply)) {
+    progress = undefined;
+    applicationProgress.delete(page);
     await page.goto(job.target.apply, { waitUntil: 'domcontentloaded', timeout: 22000 });
   }
-  await page.bringToFront();
-  const form = await inspectForm(page, job.target, candidate, join(runsDir, job.id, 'cv.pdf'), true, submit);
+  if (!automatic) await page.bringToFront();
+  const form = await advanceApplication(page, job.target, candidate, join(runsDir, job.id, 'cv.pdf'), {
+    progress, unattended: Boolean(automatic), canAdvance: allowed,
+    onStep: async completed => save(job, { applicationScreen: completed + 1 }),
+  });
+  applicationProgress.set(page, form.progress);
+  if (form.stopped) {
+    await save(job, { state: 'ready' });
+    return;
+  }
   if (form.missing.length || !submit) {
-    await save(job, { state: form.missing.length ? 'needs_input' : 'filled', providerOpened: true, missing: form.missing });
+    await save(job, { state: form.missing.length ? 'needs_input' : 'filled', missing: form.missing, applicationScreen: form.progress.steps.length + 1 });
     if (form.missing.length && job.sourceId) await notifyOnce(job, 'attention', 'El formulario requiere tu intervención');
     return;
   }
@@ -219,10 +233,8 @@ async function apply(job, submit, automatic = false) {
     await save(job, { state: 'ready' });
     return;
   }
-  const formSnapshot = await form.form.evaluate(element => Array.from(element.elements).filter(field =>
-    field.name && !['hidden', 'password', 'submit', 'button', 'reset'].includes(field.type) && field.getClientRects().length
-  ).map(field => ({ name: field.name, label: field.labels?.[0]?.textContent?.trim(), value: field.type === 'file' ? [...field.files].map(file => file.name) : ['radio', 'checkbox'].includes(field.type) ? field.checked : field.value })));
-  await writeRecord(join(runsDir, job.id, 'form.json'), { url: page.url(), fields: formSnapshot });
+  const fields = await formSnapshot(form.form);
+  await writeRecord(join(runsDir, job.id, 'form.json'), { url: page.url(), fields, steps: form.progress.steps });
   // The last check is after form snapshot I/O, just before reserving the attempt.
   if (!allowed()) {
     await save(job, { state: 'ready' });

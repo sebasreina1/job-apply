@@ -11,6 +11,7 @@ let token;
 let previous;
 let current;
 const selection = new Set();
+let visibleLimit = 30;
 const filter = document.querySelector('#filter');
 const autoToggle = document.querySelector('#auto-toggle');
 const sourceForm = document.querySelector('#source-form');
@@ -67,6 +68,7 @@ function render(job) {
     card.append(details);
   }
   if (job.target?.apply) card.append(element('p', `Portal de envío: ${new URL(job.target.apply).hostname}`, 'meta'));
+  if (job.applicationScreen && !['submitted', 'unconfirmed'].includes(job.state)) card.append(element('p', `Pantalla ${job.applicationScreen} de la candidatura`, 'meta'));
   if (job.message || job.receipt) card.append(element('p', job.message || job.receipt, 'meta'));
   if (job.pdf && !job.target) card.append(element('p', 'Este portal requiere que adjuntes el CV manualmente.', 'meta'));
   if (job.terms?.length) {
@@ -108,13 +110,19 @@ function renderDashboard(state) {
   for (const id of selection) if (!available.has(id)) selection.delete(id);
   updateSelection();
   document.querySelector('#count').textContent = `${visible.length} de ${state.jobs.length}`;
-  jobsContainer.replaceChildren(...(visible.length ? visible.map(render) : [element('div', 'No hay candidaturas en esta vista.', 'empty')]));
+  jobsContainer.replaceChildren(...(visible.length ? visible.slice(0, visibleLimit).map(render) : [element('div', 'No hay candidaturas en esta vista.', 'empty')]));
+  if (visible.length > visibleLimit) {
+    const more = element('button', `Mostrar ${Math.min(30, visible.length - visibleLimit)} más`);
+    more.addEventListener('click', () => { visibleLimit += 30; renderDashboard(current); });
+    jobsContainer.append(more);
+  }
   autoToggle.textContent = state.monitor.auto ? 'Pausar envío automático' : 'Activar envío automático';
   autoToggle.setAttribute('aria-pressed', String(state.monitor.auto));
   autoToggle.disabled = !state.monitor.auto && (!state.aiConfigured || !state.monitor.sources.some(source => source.enabled && source.lastSuccess));
   document.querySelector('#monitor-status').textContent = `${state.automaticToday} de 10 intentos automáticos hoy`;
   document.querySelector('#monitor-help').textContent = state.aiConfigured ? 'Consulta cada cinco minutos. La primera lectura de cada fuente queda para revisión.' : 'La puntuación local y los borradores están disponibles. Configura la IA en el archivo local para activar el envío automático.';
-  document.querySelector('#sources').replaceChildren(...state.monitor.sources.map(source => {
+  const sourceList = document.querySelector('#sources');
+  sourceList.replaceChildren(...state.monitor.sources.map(source => {
     const row = element('div', null, 'source-row');
     const info = element('div');
     info.append(link(source.token, source.url), element('p', `${source.type} · ${source.count} abiertas${source.error ? ` · ${source.error}` : ''}${source.lastSuccess ? ` · ${new Date(source.lastSuccess).toLocaleString('es')}` : ''}`, 'meta'));
@@ -123,6 +131,7 @@ function renderDashboard(state) {
     row.append(info, button);
     return row;
   }));
+  if (!state.monitor.sources.length) sourceList.append(element('p', 'Añade una fuente de Greenhouse, Lever o Ashby para iniciar el monitoreo.', 'help'));
 }
 async function refresh() {
   const response = await fetch('/api/jobs');
@@ -142,7 +151,7 @@ async function perform(path, values, button) {
   catch (error) { showError(error.message); return false; }
   finally { button.disabled = false; }
 }
-filter.addEventListener('change', () => { if (current) renderDashboard(current); });
+filter.addEventListener('change', () => { visibleLimit = 30; if (current) renderDashboard(current); });
 sourceForm.addEventListener('submit', async event => {
   event.preventDefault();
   const url = new FormData(sourceForm).get('url');

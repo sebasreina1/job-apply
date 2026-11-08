@@ -10,8 +10,11 @@ const hosts = {
 export function boardURL(value) {
   const url = jobURL(value);
   const type = hosts[url.hostname];
-  const token = url.pathname.match(/^\/([\w-]+)\/?$/)?.[1];
-  if (!type || !token || url.search) throw new Error('Usa el enlace a la bolsa de una empresa en Greenhouse, Lever o Ashby.');
+  const rootToken = url.pathname.match(/^\/([\w-]+)\/?$/)?.[1];
+  const posting = provider(url.href);
+  const ashbyPosting = type === 'ashby' && url.pathname.match(/^\/([\w-]+)\/[a-f\d-]{36}(?:\/apply)?\/?$/i)?.[1];
+  const token = rootToken || posting?.key.split('/')[1] || ashbyPosting;
+  if (!type || !token) throw new Error('Pega una bolsa o una vacante de Greenhouse, Lever o Ashby.');
   return { id: `${url.hostname}/${token.toLowerCase()}`, type, token, url: `${url.origin}/${token}`, host: url.hostname };
 }
 
@@ -30,6 +33,7 @@ export function plainText(value) {
 export async function fetchBoard(source, request = fetch) {
   const get = async url => {
     const response = await request(url, { headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(15000) });
+    if (response.status === 404) throw new Error('El portal no encontró esa bolsa. Copia el enlace de la página de empleos de la empresa o de una vacante activa.');
     if (!response.ok) throw new Error(`El portal respondió ${response.status}.`);
     return response.json();
   };
